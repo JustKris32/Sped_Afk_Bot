@@ -1,7 +1,7 @@
 {
   "name": "AFK Bot",
   "bot-account": {
-    "username": "Slobot00",
+    "username": "Spedbot00",
     "password": "",
     "type": "offline"
   },
@@ -29,10 +29,10 @@
     "chat-messages": {
       "enabled": true,
       "repeat": true,
-      "repeat-delay": 120,
+      "repeat-delay": 200,
       "messages": [
         "Hello Guys Im a Bot",
-        "Unknowns 24/7 AFK bot",
+        "JustKris's 24/7 AFK bot",
         "I keep the server on 24/7"
       ]
     },
