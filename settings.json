@@ -29,7 +29,7 @@
     "chat-messages": {
       "enabled": true,
       "repeat": true,
-      "repeat-delay": 230,
+      "repeat-delay": 200,
       "messages": [
         "Hello Guys Im a Bot",
         "JustKris's 24/7 AFK bot",
