@@ -242,9 +242,11 @@ app.get("/", (req, res) => {
 '.player-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}\n' +
 '.player-ping{margin-left:auto;font-size:11px;color:var(--muted)}\n' +
 '.inv-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:4px}\n' +
-'.inv-slot{aspect-ratio:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);text-align:center;padding:2px;overflow:hidden;position:relative}\n' +
-'.item-name{font-size:8px;line-height:1.2;word-break:break-all;color:var(--text)}\n' +
-'.item-count{position:absolute;bottom:1px;right:2px;font-size:8px;font-weight:700;color:#fbbf24}\n' +
+'.inv-slot{aspect-ratio:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);text-align:center;padding:2px;overflow:hidden;position:relative;cursor:default}\n' +
+'.inv-slot img{width:80%;height:80%;object-fit:contain;image-rendering:pixelated;image-rendering:crisp-edges}\n' +
+'.inv-slot:hover .inv-tooltip{display:block}\n' +
+'.inv-tooltip{display:none;position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:#1a2235;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;white-space:nowrap;color:var(--text);z-index:50;pointer-events:none}\n' +
+'.item-count{position:absolute;bottom:1px;right:2px;font-size:8px;font-weight:700;color:#fbbf24;text-shadow:1px 1px 0 #000;line-height:1}\n' +
 '.chat-box{background:var(--bg);border-radius:10px;padding:12px;max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:12px}\n' +
 '.chat-msg{font-size:12.5px;line-height:1.5}\n' +
 '.chat-time{color:var(--muted);font-size:10px;margin-right:6px}\n' +
@@ -489,8 +491,18 @@ app.get("/", (req, res) => {
 '    var slots=Array(9).fill(null);\n' +
 '    if(h.inventory)h.inventory.forEach(function(item){slots[item.slot]=item;});\n' +
 '    document.getElementById("inv-grid").innerHTML=slots.map(function(item){\n' +
-'      if(!item)return \'<div class="inv-slot"><span style="color:var(--border)">·</span></div>\';\n' +
-'      return \'<div class="inv-slot"><span class="item-name">\'+esc(item.displayName)+\'</span><span class="item-count">\'+item.count+\'</span></div>\';\n' +
+'      if(!item)return \'<div class="inv-slot"><span style="color:var(--border);font-size:14px">·</span></div>\';\n' +
+'      var name=item.name||"";\n' +
+'      var imgUrl="https://mc-item-thumbnails.s3.amazonaws.com/"+name+".png";\n' +
+'      var fallback="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/item/"+name+".png";\n' +
+'      var blockFallback="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/block/"+name+".png";\n' +
+'      return \'<div class="inv-slot">\' +\n' +
+'        \'<img src="\'+imgUrl+\'" \' +\n' +
+'          \'onerror="this.src=\\\'\'+fallback+\'\\\';this.onerror=function(){this.src=\\\'\'+blockFallback+\'\\\';this.onerror=function(){this.style.display=\\\'none\\\';this.nextElementSibling&&(this.nextElementSibling.style.fontSize=\\\'7px\\\');}}" \' +\n' +
+'          \'alt="\'+esc(item.displayName)+\'">\' +\n' +
+'        \'<span class="item-count">\' + (item.count > 1 ? item.count : "") + \'</span>\' +\n' +
+'        \'<div class="inv-tooltip">\'+esc(item.displayName)+\'</div>\' +\n' +
+'      \'</div>\';\n' +
 '    }).join("");\n' +
 '    if(h.lastKickAnalysis){\n' +
 '      var k=h.lastKickAnalysis;\n' +
@@ -662,7 +674,7 @@ app.get("/", (req, res) => {
 '\n' +
 '(function(){\n' +
 '  var g=document.getElementById("inv-grid");\n' +
-'  g.innerHTML=Array(9).fill(\'<div class="inv-slot"><span style="color:var(--border)">·</span></div>\').join("");\n' +
+'  g.innerHTML=Array(9).fill(\'<div class="inv-slot"><span style="color:var(--border);font-size:14px">·</span></div>\').join("");\n' +
 '})();\n' +
 '\n' +
 'setInterval(update,4000);\n' +
