@@ -206,12 +206,15 @@ app.get("/", (req, res) => {
 '.grid{display:grid;gap:16px;margin-bottom:16px}\n' +
 '.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}\n' +
 '@media(max-width:700px){\n' +
+'  body{overflow-y:auto;overflow-x:hidden}\n' +
 '  .g2,.g3{grid-template-columns:1fr}\n' +
 '  .sidebar{display:none}\n' +
-'  .main{margin-left:0;padding:16px 12px;padding-bottom:80px}\n' +
+'  .main{margin-left:0;padding:16px 12px;padding-bottom:90px;height:auto;min-height:100vh;overflow-y:visible}\n' +
+'  .page.active{display:block;overflow:visible}\n' +
 '  .mobile-nav{display:flex !important}\n' +
-'  .ai-wrap{height:calc(100vh - 200px)}\n' +
-'  .log-body{max-height:calc(100vh - 280px)}\n' +
+'  .ai-wrap{height:auto;min-height:0}\n' +
+'  .ai-msgs{max-height:45vh;min-height:120px}\n' +
+'  .log-body{max-height:55vh}\n' +
 '  .controls{grid-template-columns:1fr 1fr}\n' +
 '  .ping-badge{display:none}\n' +
 '}\n' +
