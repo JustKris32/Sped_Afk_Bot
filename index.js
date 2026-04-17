@@ -12,6 +12,43 @@ const https = require("https");
 const path = require("path");
 const fs = require("fs");
 
+// ── BAN EMAIL ────────────────────────────────────────────────
+let banEmailSent = false;
+async function sendBanEmail(kickReason) {
+  const to   = process.env.ALERT_EMAIL_TO;
+  const user = process.env.ALERT_EMAIL_USER;
+  const pass = process.env.ALERT_EMAIL_PASS;
+  if (!to || !user || !pass) {
+    addLog("[BanAlert] Email env vars not set — skipping alert.");
+    return;
+  }
+  try {
+    const nodemailer = require("nodemailer");
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user, pass },
+    });
+    await transporter.sendMail({
+      from: `"Bot Alert" <${user}>`,
+      to,
+      subject: `🔨 Bot Banned on ${config.server.ip}`,
+      html: `
+        <h2 style="color:#dc2626">⛔ Your Minecraft bot was banned</h2>
+        <p><strong>Server:</strong> ${config.server.ip}:${config.server.port}</p>
+        <p><strong>Bot name:</strong> ${config["bot-account"].username}</p>
+        <p><strong>Kick reason:</strong> ${kickReason}</p>
+        <p><strong>Time:</strong> ${new Date().toUTCString()}</p>
+        <hr>
+        <p style="color:#888;font-size:12px">Sent by your AFK bot dashboard.</p>
+      `,
+    });
+    addLog("[BanAlert] ✅ Ban alert email sent to " + to);
+  } catch (err) {
+    addLog("[BanAlert] ❌ Failed to send email: " + err.message);
+  }
+}
+
+
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 5000;
@@ -127,6 +164,45 @@ app.get("/health", (req, res) => {
 app.get("/chat-history", (req, res) => res.json(chatHistory));
 app.get("/logs-json", (req, res) => res.json(getLogs().slice(-100)));
 app.get("/ping", (req, res) => res.send("pong"));
+
+// ── BAN EMAIL ALERT ──────────────────────────────────────────
+let banAlertSent = false;
+app.post("/notify-ban", async (req, res) => {
+  if (banAlertSent) return res.json({ success: false, msg: "Already sent" });
+  const toEmail   = process.env.ALERT_EMAIL_TO;
+  const fromEmail = process.env.ALERT_EMAIL_FROM || process.env.ALERT_EMAIL_TO;
+  const smtpPass  = process.env.ALERT_EMAIL_PASS;
+  const smtpHost  = process.env.ALERT_SMTP_HOST  || "smtp.gmail.com";
+  const smtpPort  = parseInt(process.env.ALERT_SMTP_PORT || "465");
+  if (!toEmail || !smtpPass) {
+    addLog("[BanAlert] Email not configured — set ALERT_EMAIL_TO and ALERT_EMAIL_PASS env vars");
+    return res.json({ success: false, msg: "Email not configured" });
+  }
+  try {
+    const nodemailer = require("nodemailer");
+    const transporter = nodemailer.createTransport({
+      host: smtpHost, port: smtpPort, secure: smtpPort === 465,
+      auth: { user: fromEmail, pass: smtpPass },
+    });
+    await transporter.sendMail({
+      from: `"Bot Monitor" <${fromEmail}>`,
+      to: toEmail,
+      subject: `🔨 Bot BANNED on ${config.server.ip}`,
+      html: `<h2 style="color:#dc2626">⛔ Your Minecraft bot has been banned</h2>
+             <p><b>Server:</b> ${config.server.ip}:${config.server.port}</p>
+             <p><b>Bot:</b> ${config["bot-account"]?.username || "Unknown"}</p>
+             <p><b>Reason:</b> ${req.body.reason || "Ban detected"}</p>
+             <p><b>Time:</b> ${new Date().toUTCString()}</p>
+             <p style="color:#888;font-size:12px">Sent by your AFK Bot Dashboard</p>`,
+    });
+    banAlertSent = true;
+    addLog("[BanAlert] ✅ Ban email sent to " + toEmail);
+    res.json({ success: true });
+  } catch (err) {
+    addLog("[BanAlert] ❌ Failed to send email: " + err.message);
+    res.json({ success: false, msg: err.message });
+  }
+});
 
 // ── BOT CONTROL ─────────────────────────────────────────────
 app.post("/start", (req, res) => {
@@ -490,27 +566,66 @@ app.get("/", (req, res) => {
 '    }else{pl.innerHTML=\'<div class="empty">No players detected</div>\';}\n' +
 '    var slots=Array(9).fill(null);\n' +
 '    if(h.inventory)h.inventory.forEach(function(item){slots[item.slot]=item;});\n' +
-'    document.getElementById("inv-grid").innerHTML=slots.map(function(item){\n' +
-'      if(!item)return \'<div class="inv-slot"><span style="color:var(--border);font-size:14px">·</span></div>\';\n' +
-'      var name=item.name||"";\n' +
-'      var imgUrl="https://mc-item-thumbnails.s3.amazonaws.com/"+name+".png";\n' +
-'      var fallback="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/item/"+name+".png";\n' +
-'      var blockFallback="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/block/"+name+".png";\n' +
-'      return \'<div class="inv-slot">\' +\n' +
-'        \'<img src="\'+imgUrl+\'" \' +\n' +
-'          \'onerror="this.src=\\\'\'+fallback+\'\\\';this.onerror=function(){this.src=\\\'\'+blockFallback+\'\\\';this.onerror=function(){this.style.display=\\\'none\\\';this.nextElementSibling&&(this.nextElementSibling.style.fontSize=\\\'7px\\\');}}" \' +\n' +
-'          \'alt="\'+esc(item.displayName)+\'">\' +\n' +
-'        \'<span class="item-count">\' + (item.count > 1 ? item.count : "") + \'</span>\' +\n' +
-'        \'<div class="inv-tooltip">\'+esc(item.displayName)+\'</div>\' +\n' +
-'      \'</div>\';\n' +
-'    }).join("");\n' +
+'    var grid=document.getElementById("inv-grid");\n' +
+'    // Build slot DOM nodes once, then only patch what changed — prevents image flash\n' +
+'    if(grid.children.length!==9){\n' +
+'      grid.innerHTML="";\n' +
+'      for(var s=0;s<9;s++){\n' +
+'        var cell=document.createElement("div");cell.className="inv-slot";\n' +
+'        var img=document.createElement("img");img.style.cssText="width:80%;height:80%;object-fit:contain;image-rendering:pixelated";\n' +
+'        img.dataset.tried="";\n' +
+'        var count=document.createElement("span");count.className="item-count";\n' +
+'        var tip=document.createElement("div");tip.className="inv-tooltip";\n' +
+'        var empty=document.createElement("span");empty.style.cssText="color:var(--border);font-size:14px";empty.textContent="·";\n' +
+'        cell.appendChild(img);cell.appendChild(count);cell.appendChild(tip);cell.appendChild(empty);\n' +
+'        grid.appendChild(cell);\n' +
+'      }\n' +
+'    }\n' +
+'    slots.forEach(function(item,i){\n' +
+'      var cell=grid.children[i];\n' +
+'      var img=cell.querySelector("img");\n' +
+'      var countEl=cell.querySelector(".item-count");\n' +
+'      var tipEl=cell.querySelector(".inv-tooltip");\n' +
+'      var emptyEl=cell.querySelector("span:not(.item-count)");\n' +
+'      var newName=item?item.name:"";\n' +
+'      var newCount=item?String(item.count):"";\n' +
+'      if(cell.dataset.itemName===newName&&cell.dataset.itemCount===newCount)return;\n' +
+'      cell.dataset.itemName=newName;\n' +
+'      cell.dataset.itemCount=newCount;\n' +
+'      if(!item){\n' +
+'        img.style.display="none";img.src="";img.dataset.tried="";\n' +
+'        countEl.textContent="";tipEl.textContent="";\n' +
+'        if(emptyEl)emptyEl.style.display="";\n' +
+'        return;\n' +
+'      }\n' +
+'      if(emptyEl)emptyEl.style.display="none";\n' +
+'      img.style.display="";\n' +
+'      img.dataset.tried="";\n' +
+'      var itemSrc="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/item/"+newName+".png";\n' +
+'      var blockSrc="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/block/"+newName+".png";\n' +
+'      img.onerror=function(){\n' +
+'        if(this.dataset.tried==="item"){this.dataset.tried="block";this.src=blockSrc;}\n' +
+'        else if(this.dataset.tried==="block"){this.style.display="none";}\n' +
+'        else{this.dataset.tried="item";this.src=itemSrc;}\n' +
+'      };\n' +
+'      if(img.dataset.src!==itemSrc){img.dataset.src=itemSrc;img.dataset.tried="item";img.src=itemSrc;}\n' +
+'      countEl.textContent=item.count>1?item.count:"";\n' +
+'      tipEl.textContent=item.displayName;\n' +
+'    });\n' +
 '    if(h.lastKickAnalysis){\n' +
 '      var k=h.lastKickAnalysis;\n' +
 '      document.getElementById("kick-section").style.display="block";\n' +
 '      document.getElementById("kick-card").style.cssText="border-color:"+k.color+";background:"+k.color+"11";\n' +
 '      document.getElementById("kick-header").innerHTML=k.icon+\' <span style="color:\'+k.color+\'">\'+esc(k.label)+\'</span>\';\n' +
 '      document.getElementById("kick-tip").textContent=k.tip;\n' +
-'    }else{document.getElementById("kick-section").style.display="none";}\n' +
+'      if(k.label==="Banned"&&!window._banAlertSent){\n' +
+'        window._banAlertSent=true;\n' +
+'        post("/notify-ban",{reason:k.tip}).catch(function(){});\n' +
+'      }\n' +
+'    }else{\n' +
+'      document.getElementById("kick-section").style.display="none";\n' +
+'      window._banAlertSent=false;\n' +
+'    }\n' +
 '    document.getElementById("btn-start").disabled=!!h.botRunning;\n' +
 '    document.getElementById("btn-stop").disabled=!h.botRunning;\n' +
 '  }).catch(function(){});\n' +
@@ -784,6 +899,7 @@ function createBot(){
       botState.connected=true;botState.lastActivity=Date.now();
       botState.reconnectAttempts=0;botState.lastKickAnalysis=null;
       isReconnecting=false;
+      banAlertSent=false;
       addLog(`[Bot] [+] Spawned! Version: ${bot.version}`);
       startTelemetry(bot,config.server.ip);
       const mcData=require("minecraft-data")(bot.version);
@@ -808,6 +924,10 @@ function createBot(){
       addLog(`[KickAnalyzer] ${botState.lastKickAnalysis.label}: ${botState.lastKickAnalysis.tip}`);
       addReconnectEvent(kt,"kicked");
       if(KICK_REASONS.THROTTLE_KEYWORDS.some(k=>kt.toLowerCase().includes(k)))botState.wasThrottled=true;
+      if(botState.lastKickAnalysis.label==="Banned"&&!banEmailSent){
+        banEmailSent=true;
+        sendBanEmail(kt);
+      }
     });
     bot.on("end",reason=>{
       addLog(`[Bot] Disconnected: ${reason||"Unknown"}`);
