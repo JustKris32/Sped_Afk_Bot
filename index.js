@@ -167,40 +167,68 @@ app.get("/ping", (req, res) => res.send("pong"));
 
 // ── BAN EMAIL ALERT ──────────────────────────────────────────
 let banAlertSent = false;
-app.post("/notify-ban", async (req, res) => {
-  if (banAlertSent) return res.json({ success: false, msg: "Already sent" });
+
+async function sendBanEmail(reason) {
   const toEmail   = process.env.ALERT_EMAIL_TO;
   const fromEmail = process.env.ALERT_EMAIL_FROM || process.env.ALERT_EMAIL_TO;
   const smtpPass  = process.env.ALERT_EMAIL_PASS;
-  const smtpHost  = process.env.ALERT_SMTP_HOST  || "smtp.gmail.com";
-  const smtpPort  = parseInt(process.env.ALERT_SMTP_PORT || "465");
-  if (!toEmail || !smtpPass) {
-    addLog("[BanAlert] Email not configured — set ALERT_EMAIL_TO and ALERT_EMAIL_PASS env vars");
-    return res.json({ success: false, msg: "Email not configured" });
-  }
+  const smtpHost  = process.env.ALERT_SMTP_HOST || "smtp.gmail.com";
+  const smtpPort  = parseInt(process.env.ALERT_SMTP_PORT || "587");
+
+  if (!toEmail)   { addLog("[BanAlert] ❌ ALERT_EMAIL_TO env var not set");   throw new Error("ALERT_EMAIL_TO not set"); }
+  if (!smtpPass)  { addLog("[BanAlert] ❌ ALERT_EMAIL_PASS env var not set"); throw new Error("ALERT_EMAIL_PASS not set"); }
+
+  addLog(`[BanAlert] Sending email to ${toEmail} via ${smtpHost}:${smtpPort}...`);
+
+  let nodemailer;
+  try { nodemailer = require("nodemailer"); }
+  catch(e) { addLog("[BanAlert] ❌ nodemailer not installed — run: npm install nodemailer"); throw new Error("nodemailer not installed"); }
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465,
+    auth: { user: fromEmail, pass: smtpPass },
+    tls: { rejectUnauthorized: false },
+  });
+
+  await transporter.verify();
+  addLog("[BanAlert] SMTP connection verified ✅");
+
+  await transporter.sendMail({
+    from: `"Bot Monitor" <${fromEmail}>`,
+    to: toEmail,
+    subject: `🔨 Bot BANNED on ${config.server.ip}`,
+    html: `<h2 style="color:#dc2626">⛔ Your Minecraft bot has been banned</h2>
+           <p><b>Server:</b> ${config.server.ip}:${config.server.port}</p>
+           <p><b>Bot:</b> ${config["bot-account"]?.username || "Unknown"}</p>
+           <p><b>Reason:</b> ${reason || "Ban detected"}</p>
+           <p><b>Time:</b> ${new Date().toUTCString()}</p>
+           <hr><p style="color:#888;font-size:12px">Sent by your AFK Bot Dashboard</p>`,
+  });
+  addLog("[BanAlert] ✅ Ban alert email sent to " + toEmail);
+}
+
+app.post("/notify-ban", async (req, res) => {
+  if (banAlertSent) return res.json({ success: false, msg: "Already sent" });
+  banAlertSent = true;
   try {
-    const nodemailer = require("nodemailer");
-    const transporter = nodemailer.createTransport({
-      host: smtpHost, port: smtpPort, secure: smtpPort === 465,
-      auth: { user: fromEmail, pass: smtpPass },
-    });
-    await transporter.sendMail({
-      from: `"Bot Monitor" <${fromEmail}>`,
-      to: toEmail,
-      subject: `🔨 Bot BANNED on ${config.server.ip}`,
-      html: `<h2 style="color:#dc2626">⛔ Your Minecraft bot has been banned</h2>
-             <p><b>Server:</b> ${config.server.ip}:${config.server.port}</p>
-             <p><b>Bot:</b> ${config["bot-account"]?.username || "Unknown"}</p>
-             <p><b>Reason:</b> ${req.body.reason || "Ban detected"}</p>
-             <p><b>Time:</b> ${new Date().toUTCString()}</p>
-             <p style="color:#888;font-size:12px">Sent by your AFK Bot Dashboard</p>`,
-    });
-    banAlertSent = true;
-    addLog("[BanAlert] ✅ Ban email sent to " + toEmail);
+    await sendBanEmail(req.body.reason);
     res.json({ success: true });
-  } catch (err) {
-    addLog("[BanAlert] ❌ Failed to send email: " + err.message);
+  } catch(err) {
+    addLog("[BanAlert] ❌ " + err.message);
+    banAlertSent = false; // allow retry
     res.json({ success: false, msg: err.message });
+  }
+});
+
+// Test endpoint — visit /test-ban-email in your browser to verify email works
+app.get("/test-ban-email", async (req, res) => {
+  try {
+    await sendBanEmail("TEST — manual trigger from dashboard");
+    res.send("✅ Test email sent! Check your inbox.");
+  } catch(err) {
+    res.send("❌ Failed: " + err.message + "<br>Check your bot logs for details.");
   }
 });
 
@@ -567,17 +595,16 @@ app.get("/", (req, res) => {
 '    var slots=Array(9).fill(null);\n' +
 '    if(h.inventory)h.inventory.forEach(function(item){slots[item.slot]=item;});\n' +
 '    var grid=document.getElementById("inv-grid");\n' +
-'    // Build slot DOM nodes once, then only patch what changed — prevents image flash\n' +
 '    if(grid.children.length!==9){\n' +
 '      grid.innerHTML="";\n' +
 '      for(var s=0;s<9;s++){\n' +
 '        var cell=document.createElement("div");cell.className="inv-slot";\n' +
-'        var img=document.createElement("img");img.style.cssText="width:80%;height:80%;object-fit:contain;image-rendering:pixelated";\n' +
-'        img.dataset.tried="";\n' +
-'        var count=document.createElement("span");count.className="item-count";\n' +
-'        var tip=document.createElement("div");tip.className="inv-tooltip";\n' +
-'        var empty=document.createElement("span");empty.style.cssText="color:var(--border);font-size:14px";empty.textContent="·";\n' +
-'        cell.appendChild(img);cell.appendChild(count);cell.appendChild(tip);cell.appendChild(empty);\n' +
+'        var img=document.createElement("img");\n' +
+'        img.style.cssText="width:80%;height:80%;object-fit:contain;image-rendering:pixelated;display:none";\n' +
+'        var countEl=document.createElement("span");countEl.className="item-count";\n' +
+'        var tipEl=document.createElement("div");tipEl.className="inv-tooltip";\n' +
+'        var dot=document.createElement("span");dot.className="inv-empty-dot";dot.style.cssText="color:var(--border);font-size:14px";dot.textContent="·";\n' +
+'        cell.appendChild(img);cell.appendChild(countEl);cell.appendChild(tipEl);cell.appendChild(dot);\n' +
 '        grid.appendChild(cell);\n' +
 '      }\n' +
 '    }\n' +
@@ -586,29 +613,30 @@ app.get("/", (req, res) => {
 '      var img=cell.querySelector("img");\n' +
 '      var countEl=cell.querySelector(".item-count");\n' +
 '      var tipEl=cell.querySelector(".inv-tooltip");\n' +
-'      var emptyEl=cell.querySelector("span:not(.item-count)");\n' +
+'      var dot=cell.querySelector(".inv-empty-dot");\n' +
 '      var newName=item?item.name:"";\n' +
 '      var newCount=item?String(item.count):"";\n' +
 '      if(cell.dataset.itemName===newName&&cell.dataset.itemCount===newCount)return;\n' +
 '      cell.dataset.itemName=newName;\n' +
 '      cell.dataset.itemCount=newCount;\n' +
 '      if(!item){\n' +
-'        img.style.display="none";img.src="";img.dataset.tried="";\n' +
+'        img.style.display="none";img.src="";\n' +
 '        countEl.textContent="";tipEl.textContent="";\n' +
-'        if(emptyEl)emptyEl.style.display="";\n' +
+'        dot.style.display="";\n' +
 '        return;\n' +
 '      }\n' +
-'      if(emptyEl)emptyEl.style.display="none";\n' +
+'      dot.style.display="none";\n' +
 '      img.style.display="";\n' +
-'      img.dataset.tried="";\n' +
 '      var itemSrc="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/item/"+newName+".png";\n' +
 '      var blockSrc="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/block/"+newName+".png";\n' +
-'      img.onerror=function(){\n' +
-'        if(this.dataset.tried==="item"){this.dataset.tried="block";this.src=blockSrc;}\n' +
-'        else if(this.dataset.tried==="block"){this.style.display="none";}\n' +
-'        else{this.dataset.tried="item";this.src=itemSrc;}\n' +
-'      };\n' +
-'      if(img.dataset.src!==itemSrc){img.dataset.src=itemSrc;img.dataset.tried="item";img.src=itemSrc;}\n' +
+'      if(img.dataset.loadedSrc!==itemSrc){\n' +
+'        img.dataset.loadedSrc=itemSrc;\n' +
+'        img.onerror=function(){\n' +
+'          if(this.src===itemSrc){this.src=blockSrc;}\n' +
+'          else{this.style.display="none";dot.style.display="";}\n' +
+'        };\n' +
+'        img.src=itemSrc;\n' +
+'      }\n' +
 '      countEl.textContent=item.count>1?item.count:"";\n' +
 '      tipEl.textContent=item.displayName;\n' +
 '    });\n' +
@@ -786,11 +814,6 @@ app.get("/", (req, res) => {
 'var aiTa=document.getElementById("ai-input");\n' +
 'aiTa.addEventListener("input",function(){this.style.height="auto";this.style.height=Math.min(this.scrollHeight,120)+"px";});\n' +
 'aiTa.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAI();}});\n' +
-'\n' +
-'(function(){\n' +
-'  var g=document.getElementById("inv-grid");\n' +
-'  g.innerHTML=Array(9).fill(\'<div class="inv-slot"><span style="color:var(--border);font-size:14px">·</span></div>\').join("");\n' +
-'})();\n' +
 '\n' +
 'setInterval(update,4000);\n' +
 'setInterval(function(){\n' +
