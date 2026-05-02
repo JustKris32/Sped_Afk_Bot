@@ -6,8 +6,8 @@
     "type": "offline"
   },
   "server": {
-    "ip": "MgaSpedNgNotre.aternos.me",
-    "port": 44799,
+    "ip": "mgaspedngnotre.playwithbao.com",
+    "port": 41234,
     "version": "1.21.11",
     "try-creative": false
   },
