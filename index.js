@@ -243,9 +243,11 @@ app.get("/", (req, res) => {
 '.player-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}\n' +
 '.player-ping{margin-left:auto;font-size:11px;color:var(--muted)}\n' +
 '.inv-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:4px}\n' +
-'.inv-slot{aspect-ratio:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);text-align:center;padding:2px;overflow:hidden;position:relative}\n' +
-'.item-name{font-size:8px;line-height:1.2;word-break:break-all;color:var(--text)}\n' +
-'.item-count{position:absolute;bottom:1px;right:2px;font-size:8px;font-weight:700;color:#fbbf24}\n' +
+'.inv-slot{aspect-ratio:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);text-align:center;padding:2px;overflow:hidden;position:relative;cursor:default}\n' +
+'.inv-slot[title]{cursor:help}\n' +
+'.inv-slot[title]:hover::after{content:attr(title);position:absolute;bottom:calc(100%+4px);left:50%;transform:translateX(-50%);background:#1e293b;color:#f1f5f9;font-size:10px;font-weight:600;padding:3px 7px;border-radius:5px;white-space:nowrap;pointer-events:none;z-index:99;border:1px solid #334155;box-shadow:0 2px 8px rgba(0,0,0,.5)}\n' +
+'.inv-icon{width:80%;height:80%;object-fit:contain;image-rendering:pixelated}\n' +
+'.item-count{position:absolute;bottom:1px;right:2px;font-size:8px;font-weight:700;color:#fbbf24;text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000}\n' +
 '.chat-box{background:var(--bg);border-radius:10px;padding:12px;max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:12px}\n' +
 '.chat-msg{font-size:12.5px;line-height:1.5}\n' +
 '.chat-time{color:var(--muted);font-size:10px;margin-right:6px}\n' +
@@ -491,7 +493,12 @@ app.get("/", (req, res) => {
 '    if(h.inventory)h.inventory.forEach(function(item){slots[item.slot]=item;});\n' +
 '    document.getElementById("inv-grid").innerHTML=slots.map(function(item){\n' +
 '      if(!item)return \'<div class="inv-slot"><span style="color:var(--border)">·</span></div>\';\n' +
-'      return \'<div class="inv-slot"><span class="item-name">\'+esc(item.displayName)+\'</span><span class="item-count">\'+item.count+\'</span></div>\';\n' +
+'      var imgUrl="https://mc.nerothe.com/img/1.20.1/"+item.name+".png";\n' +
+'      var tooltip=(item.displayName||item.name)+(item.count>1?" x"+item.count:"");\n' +
+'      return \'<div class="inv-slot" title="\'+esc(tooltip)+\'">'+
+'<img class="inv-icon" src="\'+imgUrl+\'" alt="\'+esc(item.displayName||item.name)+\'" onerror="this.style.display=\\'none\\';this.nextSibling.style.display=\\'block\\'">'+
+'<span style="display:none;font-size:7px;line-height:1.2;color:var(--text);word-break:break-all">\'+esc(item.displayName||item.name)+\'</span>'+
+'<span class="item-count">\'+( item.count>1?item.count:"")+\'</span></div>\';\n' +
 '    }).join("");\n' +
 '    if(h.lastKickAnalysis){\n' +
 '      var k=h.lastKickAnalysis;\n' +
