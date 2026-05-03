@@ -55,6 +55,7 @@ let botState = {
   lastActivity: Date.now(),
   reconnectAttempts: 0,
   startTime: Date.now(),
+  stopTime: null,
   errors: [],
   wasThrottled: false,
   ping: null,
@@ -108,7 +109,7 @@ app.get("/health", (req, res) => {
     : [];
   res.json({
     status: botState.connected ? "connected" : "disconnected",
-    uptime: Math.floor((Date.now() - botState.startTime) / 1000),
+    uptime: Math.floor(((botState.stopTime ?? Date.now()) - botState.startTime) / 1000),
     coords: bot && bot.entity ? bot.entity.position : null,
     lastActivity: botState.lastActivity,
     reconnectAttempts: botState.reconnectAttempts,
@@ -131,14 +132,14 @@ app.get("/ping", (req, res) => res.send("pong"));
 // ── BOT CONTROL ─────────────────────────────────────────────
 app.post("/start", (req, res) => {
   if (botRunning) return res.json({ success: false, msg: "Already running" });
-  botRunning = true; botState.startTime = Date.now(); createBot();
+  botRunning = true; botState.startTime = Date.now(); botState.stopTime = null; createBot();
   addLog("[Control] Bot started");
   res.json({ success: true });
 });
 
 app.post("/stop", (req, res) => {
   if (!botRunning) return res.json({ success: false, msg: "Already stopped" });
-  botRunning = false;
+  botRunning = false; botState.stopTime = Date.now();
   if (bot) { try { bot.end(); } catch (_) {} bot = null; }
   clearAllIntervals(); clearBotTimeouts(); isReconnecting = false;
   addLog("[Control] Bot stopped");
@@ -770,7 +771,6 @@ function createBot(){
       if(spawnHandled)return;
       spawnHandled=true;lastKickReason=null;clearBotTimeouts();
       botState.connected=true;botState.lastActivity=Date.now();
-      botState.startTime=Date.now();
       botState.reconnectAttempts=0;botState.lastKickAnalysis=null;
       isReconnecting=false;
       addLog(`[Bot] [+] Spawned! Version: ${bot.version}`);
@@ -898,7 +898,7 @@ rl.on("line",line=>{
   const t=line.trim();
   if(t.startsWith("say "))safeBotChat(t.slice(4));
   else if(t.startsWith("cmd "))safeBotChat("/"+t.slice(4));
-  else if(t==="status")addLog(`Connected: ${botState.connected}, Uptime: ${formatUptime(Math.floor((Date.now()-botState.startTime)/1000))}`);
+  else if(t==="status")addLog(`Connected: ${botState.connected}, Uptime: ${formatUptime(Math.floor(((botState.stopTime??Date.now())-botState.startTime)/1000))}`);
   else safeBotChat(t);
 });
 
