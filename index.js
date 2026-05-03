@@ -12,43 +12,6 @@ const https = require("https");
 const path = require("path");
 const fs = require("fs");
 
-// ── BAN EMAIL ────────────────────────────────────────────────
-let banEmailSent = false;
-async function sendBanEmail(kickReason) {
-  const to   = process.env.ALERT_EMAIL_TO;
-  const user = process.env.ALERT_EMAIL_USER;
-  const pass = process.env.ALERT_EMAIL_PASS;
-  if (!to || !user || !pass) {
-    addLog("[BanAlert] Email env vars not set — skipping alert.");
-    return;
-  }
-  try {
-    const nodemailer = require("nodemailer");
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user, pass },
-    });
-    await transporter.sendMail({
-      from: `"Bot Alert" <${user}>`,
-      to,
-      subject: `🔨 Bot Banned on ${config.server.ip}`,
-      html: `
-        <h2 style="color:#dc2626">⛔ Your Minecraft bot was banned</h2>
-        <p><strong>Server:</strong> ${config.server.ip}:${config.server.port}</p>
-        <p><strong>Bot name:</strong> ${config["bot-account"].username}</p>
-        <p><strong>Kick reason:</strong> ${kickReason}</p>
-        <p><strong>Time:</strong> ${new Date().toUTCString()}</p>
-        <hr>
-        <p style="color:#888;font-size:12px">Sent by your AFK bot dashboard.</p>
-      `,
-    });
-    addLog("[BanAlert] ✅ Ban alert email sent to " + to);
-  } catch (err) {
-    addLog("[BanAlert] ❌ Failed to send email: " + err.message);
-  }
-}
-
-
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 5000;
@@ -165,77 +128,10 @@ app.get("/chat-history", (req, res) => res.json(chatHistory));
 app.get("/logs-json", (req, res) => res.json(getLogs().slice(-100)));
 app.get("/ping", (req, res) => res.send("pong"));
 
-// ── BAN EMAIL ALERT ──────────────────────────────────────────
-let banAlertSent = false;
-
-async function sendBanEmail(reason) {
-  const toEmail   = process.env.ALERT_EMAIL_TO;
-  const fromEmail = process.env.ALERT_EMAIL_FROM || process.env.ALERT_EMAIL_TO;
-  const smtpPass  = process.env.ALERT_EMAIL_PASS;
-  const smtpHost  = process.env.ALERT_SMTP_HOST || "smtp.gmail.com";
-  const smtpPort  = parseInt(process.env.ALERT_SMTP_PORT || "587");
-
-  if (!toEmail)   { addLog("[BanAlert] ❌ ALERT_EMAIL_TO env var not set");   throw new Error("ALERT_EMAIL_TO not set"); }
-  if (!smtpPass)  { addLog("[BanAlert] ❌ ALERT_EMAIL_PASS env var not set"); throw new Error("ALERT_EMAIL_PASS not set"); }
-
-  addLog(`[BanAlert] Sending email to ${toEmail} via ${smtpHost}:${smtpPort}...`);
-
-  let nodemailer;
-  try { nodemailer = require("nodemailer"); }
-  catch(e) { addLog("[BanAlert] ❌ nodemailer not installed — run: npm install nodemailer"); throw new Error("nodemailer not installed"); }
-
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    auth: { user: fromEmail, pass: smtpPass },
-    tls: { rejectUnauthorized: false },
-  });
-
-  await transporter.verify();
-  addLog("[BanAlert] SMTP connection verified ✅");
-
-  await transporter.sendMail({
-    from: `"Bot Monitor" <${fromEmail}>`,
-    to: toEmail,
-    subject: `🔨 Bot BANNED on ${config.server.ip}`,
-    html: `<h2 style="color:#dc2626">⛔ Your Minecraft bot has been banned</h2>
-           <p><b>Server:</b> ${config.server.ip}:${config.server.port}</p>
-           <p><b>Bot:</b> ${config["bot-account"]?.username || "Unknown"}</p>
-           <p><b>Reason:</b> ${reason || "Ban detected"}</p>
-           <p><b>Time:</b> ${new Date().toUTCString()}</p>
-           <hr><p style="color:#888;font-size:12px">Sent by your AFK Bot Dashboard</p>`,
-  });
-  addLog("[BanAlert] ✅ Ban alert email sent to " + toEmail);
-}
-
-app.post("/notify-ban", async (req, res) => {
-  if (banAlertSent) return res.json({ success: false, msg: "Already sent" });
-  banAlertSent = true;
-  try {
-    await sendBanEmail(req.body.reason);
-    res.json({ success: true });
-  } catch(err) {
-    addLog("[BanAlert] ❌ " + err.message);
-    banAlertSent = false; // allow retry
-    res.json({ success: false, msg: err.message });
-  }
-});
-
-// Test endpoint — visit /test-ban-email in your browser to verify email works
-app.get("/test-ban-email", async (req, res) => {
-  try {
-    await sendBanEmail("TEST — manual trigger from dashboard");
-    res.send("✅ Test email sent! Check your inbox.");
-  } catch(err) {
-    res.send("❌ Failed: " + err.message + "<br>Check your bot logs for details.");
-  }
-});
-
 // ── BOT CONTROL ─────────────────────────────────────────────
 app.post("/start", (req, res) => {
   if (botRunning) return res.json({ success: false, msg: "Already running" });
-  botRunning = true; createBot();
+  botRunning = true; botState.startTime = Date.now(); createBot();
   addLog("[Control] Bot started");
   res.json({ success: true });
 });
@@ -346,11 +242,9 @@ app.get("/", (req, res) => {
 '.player-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}\n' +
 '.player-ping{margin-left:auto;font-size:11px;color:var(--muted)}\n' +
 '.inv-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:4px}\n' +
-'.inv-slot{aspect-ratio:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);text-align:center;padding:2px;overflow:hidden;position:relative;cursor:default}\n' +
-'.inv-slot img{width:80%;height:80%;object-fit:contain;image-rendering:pixelated;image-rendering:crisp-edges}\n' +
-'.inv-slot:hover .inv-tooltip{display:block}\n' +
-'.inv-tooltip{display:none;position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:#1a2235;border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;white-space:nowrap;color:var(--text);z-index:50;pointer-events:none}\n' +
-'.item-count{position:absolute;bottom:1px;right:2px;font-size:8px;font-weight:700;color:#fbbf24;text-shadow:1px 1px 0 #000;line-height:1}\n' +
+'.inv-slot{aspect-ratio:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);text-align:center;padding:2px;overflow:hidden;position:relative}\n' +
+'.item-name{font-size:8px;line-height:1.2;word-break:break-all;color:var(--text)}\n' +
+'.item-count{position:absolute;bottom:1px;right:2px;font-size:8px;font-weight:700;color:#fbbf24}\n' +
 '.chat-box{background:var(--bg);border-radius:10px;padding:12px;max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:12px}\n' +
 '.chat-msg{font-size:12.5px;line-height:1.5}\n' +
 '.chat-time{color:var(--muted);font-size:10px;margin-right:6px}\n' +
@@ -594,66 +488,17 @@ app.get("/", (req, res) => {
 '    }else{pl.innerHTML=\'<div class="empty">No players detected</div>\';}\n' +
 '    var slots=Array(9).fill(null);\n' +
 '    if(h.inventory)h.inventory.forEach(function(item){slots[item.slot]=item;});\n' +
-'    var grid=document.getElementById("inv-grid");\n' +
-'    if(grid.children.length!==9){\n' +
-'      grid.innerHTML="";\n' +
-'      for(var s=0;s<9;s++){\n' +
-'        var cell=document.createElement("div");cell.className="inv-slot";\n' +
-'        var img=document.createElement("img");\n' +
-'        img.style.cssText="width:80%;height:80%;object-fit:contain;image-rendering:pixelated;display:none";\n' +
-'        var countEl=document.createElement("span");countEl.className="item-count";\n' +
-'        var tipEl=document.createElement("div");tipEl.className="inv-tooltip";\n' +
-'        var dot=document.createElement("span");dot.className="inv-empty-dot";dot.style.cssText="color:var(--border);font-size:14px";dot.textContent="·";\n' +
-'        cell.appendChild(img);cell.appendChild(countEl);cell.appendChild(tipEl);cell.appendChild(dot);\n' +
-'        grid.appendChild(cell);\n' +
-'      }\n' +
-'    }\n' +
-'    slots.forEach(function(item,i){\n' +
-'      var cell=grid.children[i];\n' +
-'      var img=cell.querySelector("img");\n' +
-'      var countEl=cell.querySelector(".item-count");\n' +
-'      var tipEl=cell.querySelector(".inv-tooltip");\n' +
-'      var dot=cell.querySelector(".inv-empty-dot");\n' +
-'      var newName=item?item.name:"";\n' +
-'      var newCount=item?String(item.count):"";\n' +
-'      if(cell.dataset.itemName===newName&&cell.dataset.itemCount===newCount)return;\n' +
-'      cell.dataset.itemName=newName;\n' +
-'      cell.dataset.itemCount=newCount;\n' +
-'      if(!item){\n' +
-'        img.style.display="none";img.src="";\n' +
-'        countEl.textContent="";tipEl.textContent="";\n' +
-'        dot.style.display="";\n' +
-'        return;\n' +
-'      }\n' +
-'      dot.style.display="none";\n' +
-'      img.style.display="";\n' +
-'      var itemSrc="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/item/"+newName+".png";\n' +
-'      var blockSrc="https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.21/assets/minecraft/textures/block/"+newName+".png";\n' +
-'      if(img.dataset.loadedSrc!==itemSrc){\n' +
-'        img.dataset.loadedSrc=itemSrc;\n' +
-'        img.onerror=function(){\n' +
-'          if(this.src===itemSrc){this.src=blockSrc;}\n' +
-'          else{this.style.display="none";dot.style.display="";}\n' +
-'        };\n' +
-'        img.src=itemSrc;\n' +
-'      }\n' +
-'      countEl.textContent=item.count>1?item.count:"";\n' +
-'      tipEl.textContent=item.displayName;\n' +
-'    });\n' +
+'    document.getElementById("inv-grid").innerHTML=slots.map(function(item){\n' +
+'      if(!item)return \'<div class="inv-slot"><span style="color:var(--border)">·</span></div>\';\n' +
+'      return \'<div class="inv-slot"><span class="item-name">\'+esc(item.displayName)+\'</span><span class="item-count">\'+item.count+\'</span></div>\';\n' +
+'    }).join("");\n' +
 '    if(h.lastKickAnalysis){\n' +
 '      var k=h.lastKickAnalysis;\n' +
 '      document.getElementById("kick-section").style.display="block";\n' +
 '      document.getElementById("kick-card").style.cssText="border-color:"+k.color+";background:"+k.color+"11";\n' +
 '      document.getElementById("kick-header").innerHTML=k.icon+\' <span style="color:\'+k.color+\'">\'+esc(k.label)+\'</span>\';\n' +
 '      document.getElementById("kick-tip").textContent=k.tip;\n' +
-'      if(k.label==="Banned"&&!window._banAlertSent){\n' +
-'        window._banAlertSent=true;\n' +
-'        post("/notify-ban",{reason:k.tip}).catch(function(){});\n' +
-'      }\n' +
-'    }else{\n' +
-'      document.getElementById("kick-section").style.display="none";\n' +
-'      window._banAlertSent=false;\n' +
-'    }\n' +
+'    }else{document.getElementById("kick-section").style.display="none";}\n' +
 '    document.getElementById("btn-start").disabled=!!h.botRunning;\n' +
 '    document.getElementById("btn-stop").disabled=!h.botRunning;\n' +
 '  }).catch(function(){});\n' +
@@ -815,6 +660,11 @@ app.get("/", (req, res) => {
 'aiTa.addEventListener("input",function(){this.style.height="auto";this.style.height=Math.min(this.scrollHeight,120)+"px";});\n' +
 'aiTa.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAI();}});\n' +
 '\n' +
+'(function(){\n' +
+'  var g=document.getElementById("inv-grid");\n' +
+'  g.innerHTML=Array(9).fill(\'<div class="inv-slot"><span style="color:var(--border)">·</span></div>\').join("");\n' +
+'})();\n' +
+'\n' +
 'setInterval(update,4000);\n' +
 'setInterval(function(){\n' +
 '  if(document.getElementById("page-logs").classList.contains("active"))refreshLogs();\n' +
@@ -920,9 +770,9 @@ function createBot(){
       if(spawnHandled)return;
       spawnHandled=true;lastKickReason=null;clearBotTimeouts();
       botState.connected=true;botState.lastActivity=Date.now();
+      botState.startTime=Date.now();
       botState.reconnectAttempts=0;botState.lastKickAnalysis=null;
       isReconnecting=false;
-      banAlertSent=false;
       addLog(`[Bot] [+] Spawned! Version: ${bot.version}`);
       startTelemetry(bot,config.server.ip);
       const mcData=require("minecraft-data")(bot.version);
@@ -947,10 +797,6 @@ function createBot(){
       addLog(`[KickAnalyzer] ${botState.lastKickAnalysis.label}: ${botState.lastKickAnalysis.tip}`);
       addReconnectEvent(kt,"kicked");
       if(KICK_REASONS.THROTTLE_KEYWORDS.some(k=>kt.toLowerCase().includes(k)))botState.wasThrottled=true;
-      if(botState.lastKickAnalysis.label==="Banned"&&!banEmailSent){
-        banEmailSent=true;
-        sendBanEmail(kt);
-      }
     });
     bot.on("end",reason=>{
       addLog(`[Bot] Disconnected: ${reason||"Unknown"}`);
