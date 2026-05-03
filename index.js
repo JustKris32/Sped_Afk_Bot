@@ -247,6 +247,7 @@ app.get("/", (req, res) => {
 '.inv-slot[title]{cursor:help}\n' +
 '.inv-slot[title]:hover::after{content:attr(title);position:absolute;bottom:calc(100%+4px);left:50%;transform:translateX(-50%);background:#1e293b;color:#f1f5f9;font-size:10px;font-weight:600;padding:3px 7px;border-radius:5px;white-space:nowrap;pointer-events:none;z-index:99;border:1px solid #334155;box-shadow:0 2px 8px rgba(0,0,0,.5)}\n' +
 '.inv-icon{width:80%;height:80%;object-fit:contain;image-rendering:pixelated}\n' +
+'.inv-fallback{font-size:7px;line-height:1.2;color:var(--text);word-break:break-all;display:block}\n' +
 '.item-count{position:absolute;bottom:1px;right:2px;font-size:8px;font-weight:700;color:#fbbf24;text-shadow:1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000}\n' +
 '.chat-box{background:var(--bg);border-radius:10px;padding:12px;max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:12px}\n' +
 '.chat-msg{font-size:12.5px;line-height:1.5}\n' +
@@ -492,14 +493,12 @@ app.get("/", (req, res) => {
 '    var slots=Array(9).fill(null);\n' +
 '    if(h.inventory)h.inventory.forEach(function(item){slots[item.slot]=item;});\n' +
 '    document.getElementById("inv-grid").innerHTML=slots.map(function(item){\n' +
-'      if(!item)return \'<div class="inv-slot"><span style="color:var(--border)">·</span></div>\';\n' +
-'      var imgUrl="https://mc.nerothe.com/img/1.20.1/"+item.name+".png";\n' +
-'      var tooltip=(item.displayName||item.name)+(item.count>1?" x"+item.count:"");\n' +
-'      return \'<div class="inv-slot" title="\'+esc(tooltip)+\'">'+
-'<img class="inv-icon" src="\'+imgUrl+\'" alt="\'+esc(item.displayName||item.name)+\'" onerror="this.style.display=\\'none\\';this.nextSibling.style.display=\\'block\\'">'+
-'<span style="display:none;font-size:7px;line-height:1.2;color:var(--text);word-break:break-all">\'+esc(item.displayName||item.name)+\'</span>'+
-'<span class="item-count">\'+( item.count>1?item.count:"")+\'</span></div>\';\n' +
+'      if(!item)return "<div class=\\"inv-slot\\"><span style=\\"color:var(--border)\\">\\u00b7</span></div>";\n' +
+'      var tip=esc(item.displayName||item.name)+(item.count>1?" x"+item.count:"");\n' +
+'      var cnt=item.count>1?"<span class=\\"item-count\\">"+item.count+"</span>":"";\n' +
+'      return "<div class=\\"inv-slot\\" title=\\""+tip+"\\"><img class=\\"inv-icon\\" data-src=\\"https://mc.nerothe.com/img/1.20.1/"+item.name+".png\\" alt=\\"\\"><span class=\\"inv-fallback\\">"+esc(item.displayName||item.name)+"</span>"+cnt+"</div>";\n' +
 '    }).join("");\n' +
+'    renderInvIcons();\n' +
 '    if(h.lastKickAnalysis){\n' +
 '      var k=h.lastKickAnalysis;\n' +
 '      document.getElementById("kick-section").style.display="block";\n' +
@@ -673,6 +672,16 @@ app.get("/", (req, res) => {
 '  g.innerHTML=Array(9).fill(\'<div class="inv-slot"><span style="color:var(--border)">·</span></div>\').join("");\n' +
 '})();\n' +
 '\n' +
+'function renderInvIcons(){\n' +
+'  document.querySelectorAll(".inv-icon[data-src]").forEach(function(img){\n' +
+'    var src=img.getAttribute("data-src");\n' +
+'    img.removeAttribute("data-src");\n' +
+'    var i=new Image();\n' +
+'    i.onload=function(){img.src=src;img.nextSibling.style.display="none";};\n' +
+'    i.onerror=function(){img.style.display="none";};\n' +
+'    i.src=src;\n' +
+'  });\n' +
+'}\n' +
 'setInterval(update,4000);\n' +
 'setInterval(function(){\n' +
 '  if(document.getElementById("page-logs").classList.contains("active"))refreshLogs();\n' +
