@@ -1,12 +1,12 @@
 {
   "name": "AFK Bot",
   "bot-account": {
-    "username": "SpedBot101",
+    "username": "DevyBot101",
     "password": "",
     "type": "offline"
   },
   "server": {
-    "ip": "mgaspedngnotre.playwithbao.com",
+    "ip": "devysmp.playwithbao.com",
     "port": 41234,
     "version": "1.21.11",
     "try-creative": false
